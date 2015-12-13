@@ -1,6 +1,7 @@
 #include "rjob.h"
+#include "rjob_platform.h"
 
-namespace
+namespace rjob
 {
     const uint32 workerThreadCount = 8;
     const uint32 maxFibers = 512;
@@ -10,7 +11,7 @@ namespace
 
     struct Job
     {
-        Fiber* fiber;
+        Platform::Fiber* fiber;
         JobEntry entryFn;
         void* user;
     };
@@ -29,22 +30,22 @@ namespace
 
     struct WaitQueue
     {
-        WaitingJob jobs[maxJobsPerQueue * JobPriority::PriorityCount];
+        WaitingJob jobs[maxJobsPerQueue * (uint32)JobPriority::PriorityCount];
     };
 
     struct JobFiber
     {
-        Fiber fiber;
+        Platform::Fiber fiber;
         Job runningJob;
-    }
+    };
 
     struct JobSystem
     {
         RunQueue runQueues[JobPriority::PriorityCount];
         WaitQueue waitQueue;
 
-        Thread workerThreads[workerThreadCount];
-        Fiber schedulerFibers[workerThreadCount];
+        Platform::Thread workerThreads[workerThreadCount];
+        Platform::Fiber schedulerFibers[workerThreadCount];
         JobFiber fiberPool[maxFibers];
         
 
@@ -55,14 +56,14 @@ namespace
     JobSystem* jobSystem;
 
     // Always access via GetCurrentThreadIdx because compilers can optimize TLS access in a thread.
-    thread_local uint32 gCurrentThreadIdx;
+    RJOB_THREADLOCAL uint32 gCurrentThreadIdx;
 
-    void FiberThread(uint64 fiberIdx)
+    void FiberThread(uintptr fiberIdx)
     {
         while(true)
         {
-            JobFiber* fiber = jobSystem->fiberPool[fiberIdx];
-            Job* job = fiber->runningJob;
+            JobFiber* fiber = &jobSystem->fiberPool[fiberIdx];
+            Job* job = &fiber->runningJob;
             job->entryFn(job->user);
             Platform::SwitchToFiber(jobSystem->schedulerFibers[rjob::GetCurrentThreadIndex()]);
         }
@@ -70,28 +71,28 @@ namespace
 
     // We do scheduling in it's own fiber so that in theory, jobs will be able to pick their stack size.
 
-    void ScheduleWork(uint64 threadIdx)
+    void ScheduleWork(uintptr threadIdx)
     {
         while(jobSystem->running)
         {
             // Deque Best Job
             Job job;
             JobFiber* fiber;
-            if(job->fiber == nullptr)
+            if(job.fiber == nullptr)
             {
                 // Find free fiber.
             }
             fiber->runningJob = job;// Redundant copy?
-            Platform::SwitchToFiber(fiber)
+            Platform::SwitchToFiber(fiber->fiber);
         }
     }
 
-    void WorkerStartup(uint64 threadIdx)
+    void WorkerStartup(uintptr threadIdx)
     {
-        gCurrentThreadIdx = gCurrentThreadIdx;
-        Platform::AtomicIncrement32(jobSystem->runningWorkers);
+        gCurrentThreadIdx = threadIdx;
+        Platform::AtomicIncrement32(&jobSystem->runningWorkers);
         jobSystem->schedulerFibers[threadIdx] = Platform::BeginFiber(ScheduleWork, threadIdx);
-        Platform::AtomicDecrement32(jobSystem->runningWorkers);
+        Platform::AtomicDecrement32(&jobSystem->runningWorkers);
     }
 
     uint32 rjob::GetRequiredMemory()
@@ -103,7 +104,7 @@ namespace
     {
         jobSystem = (JobSystem*)memory;
         for(uint32 i = 0; i < maxFibers; i++)
-            jobSystem->fiber[i].fiber = Platform::CreateFiber(FiberThread, i, jobStackSize);
+            jobSystem->fiberPool[i].fiber = Platform::CreateFiber(FiberThread, i, jobStackSize);
     }
 
     void rjob::Deinitialize()
@@ -112,13 +113,13 @@ namespace
             Platform::Yield();
 
         for(uint32 i = 0; i < maxFibers; i++)
-            Platform::DestroyFiber(jobSystem->fiber[i].fiber)
+            Platform::DestroyFiber(jobSystem->fiberPool[i].fiber);
     }
 
     void rjob::Startup(bool consumeCurrentThread)
     {
         jobSystem->running = true;
-        uint i = 0;
+        uint32 i = 0;
         if(consumeCurrentThread)
         {
             i++;
