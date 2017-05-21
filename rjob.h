@@ -40,7 +40,11 @@ namespace rjob
         {}
     };
 
-    uint32 GetRequiredMemory();
+    constexpr uint32 GetRequiredMemory()
+    {
+        //FIXME
+        return 2048 * 1000;
+    }
 
     // Initial Job system initialization, needs to be called before anything else.
     void Initialize(void* memory);

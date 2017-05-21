@@ -77,7 +77,7 @@ namespace rjob
         {
             // Deque Best Job
             Job job;
-            JobFiber* fiber;
+            JobFiber* fiber = &job.fiber;
             if(job.fiber == nullptr)
             {
                 // Find free fiber.
@@ -95,10 +95,7 @@ namespace rjob
         Platform::AtomicDecrement32(&jobSystem->runningWorkers);
     }
 
-    uint32 rjob::GetRequiredMemory()
-    {
-        return sizeof(JobSystem);
-    }
+    static_assert(sizeof(JobSystem) <= rjob::GetRequiredMemory(), "Not enough memory for JobSystem");
 
     void rjob::Initialize(void* memory)
     {
