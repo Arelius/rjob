@@ -11,7 +11,7 @@ namespace rjob
 
     struct Job
     {
-        Platform::Fiber* fiber;
+        struct JobFiber* fiber;
         JobEntry entryFn;
         void* user;
     };
@@ -77,8 +77,8 @@ namespace rjob
         {
             // Deque Best Job
             Job job;
-            JobFiber* fiber = &job.fiber;
-            if(job.fiber == nullptr)
+            JobFiber* fiber = job.fiber;
+            if(fiber == nullptr)
             {
                 // Find free fiber.
             }

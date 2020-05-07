@@ -1,1 +1,0 @@
-cl rjob.cpp test.cpp
